@@ -1,7 +1,7 @@
 import re
 import logging
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from utils.config import Config
 from configparser import ConfigParser
@@ -23,7 +23,6 @@ sub_domains = defaultdict(int)
 def scraper(url, resp):
     links = extract_next_links(url, resp)
     logging_data()
-    print("Parsing done",url)
     return links
 
 def extract_next_links(url, resp):
@@ -43,36 +42,37 @@ def extract_next_links(url, resp):
         return list()
 
     linked_pages = set()
-    soup = BeautifulSoup(requests.get(url).raw_response.content, "html.parser")
+    soup = BeautifulSoup(requests.get(url).content, "html.parser")
 
     for a_tag in soup.findAll("a"):
         href = a_tag.attrs.get("href")
         href = modify_if_relative(href,url)
         if is_valid(href):
             linked_pages.add(href)
-
+        else:
+            print('not valid - ', href)
     return list(linked_pages)
 
 def modify_if_relative(relative_url,parent_url):
-        if relative_url.startswith("/") or relative_url.startswith("../"):
-            path_levels = relative_url.count("../")
+    if relative_url and (relative_url.startswith("/") or relative_url.startswith("../")):
+        path_levels = relative_url.count("../")
 
-            parent_components = urlparse(parent_url)
-            parent_domain = f"{parent_components.scheme}://{parent_components.netloc}"
-            parent_path = parent_components.path
+        parent_components = urlparse(parent_url)
+        parent_domain = f"{parent_components.scheme}://{parent_components.netloc}"
+        parent_path = parent_components.path
 
-            if relative_url.startswith("/"):
-                return urljoin(parent_domain, parent_path + "/" + relative_url)
+        if relative_url.startswith("/"):
+            return urljoin(parent_domain, parent_path + "/" + relative_url)
 
-            # Remove that many directory levels from base path
-            for i in range(path_levels):
-                parent_components = urlparse(parent_path)
-                parent_path = parent_components.path.rsplit("/", 1)[0]
-            
-            parent_url = urljoin(parent_domain,parent_path)
+        # Remove that many directory levels from base path
+        for i in range(path_levels):
+            parent_components = urlparse(parent_path)
+            parent_path = parent_components.path.rsplit("/", 1)[0]
+        
+        parent_url = urljoin(parent_domain,parent_path)
 
-            return urljoin(parent_url,relative_url.split("/../")[-1])
-        return relative_url
+        return urljoin(parent_url,relative_url.split("/../")[-1])
+    return relative_url
 
 def can_crawl(url, parsed):
     # checking robots.txt
@@ -137,7 +137,7 @@ def is_high_quality(url):
 
 def get_text(url):
     # scraps entire webpage's text and tokenizes
-    soup = BeautifulSoup(requests.get(url).raw_response.content, "html.parser")
+    soup = BeautifulSoup(requests.get(url).content, "html.parser")
     words = soup.get_text(" ", strip=True)
     words = words.lower()
     words = re.sub('[^A-Za-z0-9]+', ' ', words)
@@ -153,7 +153,7 @@ def get_text(url):
             word_set.remove(word)
     return word_set
 
-def deliverables():
+def deliverables(url):
     global unique_pages
     global longest_page
     global word_frequency
@@ -193,7 +193,7 @@ def logging_data():
     formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-    logger.info(f"Unique Pages:{len(unique_pages)}, Longest Page:{longest_page['url']} of len {longest_page['len']}\n"
+    logger.info(f"Unique Pages:{len(unique_pages)}, Longest Page:{longest_page['url']} of len {longest_page['length']}\n"
                 f"Most Common:{top50}\nSubDomains: {sub_domains}")
 
 def is_valid(url):
@@ -233,7 +233,7 @@ def is_valid(url):
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()):
             return False
         
-        deliverables()
+        deliverables(url)
         return True
 
     except TypeError:

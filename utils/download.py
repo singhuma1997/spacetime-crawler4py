@@ -1,6 +1,7 @@
 import requests
 import cbor
 import time
+from urllib.parse import urlparse
 
 from utils.response import Response
 
@@ -9,7 +10,6 @@ def download(url, config, logger=None):
     resp = requests.get(
         f"http://{host}:{port}/",
         params=[("q", f"{url}"), ("u", f"{config.user_agent}")])
-    print(resp)
     try:
         if resp and resp.content:
             return Response(cbor.loads(resp.content))

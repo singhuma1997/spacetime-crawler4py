@@ -11,7 +11,6 @@ def main(config_file, restart):
     cparser.read(config_file)
     config = Config(cparser)
     config.cache_server = get_cache_server(config, restart)
-    print("Got cache server")
     crawler = Crawler(config, restart)
     crawler.start()
 

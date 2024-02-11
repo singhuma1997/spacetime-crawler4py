@@ -1,6 +1,5 @@
 import re
 import logging
-import requests
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 from utils.config import Config
@@ -41,8 +40,12 @@ def extract_next_links(url, resp):
     if url != resp.url and resp.status != 200 and url != resp.raw_response.url:
         return list()
 
+    # Check for Less quality pages
+    if not is_high_quality(resp):
+        return list()
+
     linked_pages = set()
-    soup = BeautifulSoup(requests.get(url).content, "html.parser")
+    soup = BeautifulSoup(resp.raw_response.content, "html.parser")
 
     for a_tag in soup.findAll("a"):
         href = a_tag.attrs.get("href")
@@ -50,8 +53,20 @@ def extract_next_links(url, resp):
         if is_valid(href):
             linked_pages.add(href)
         else:
-            print('not valid - ', href)
+            log_invalid(href)
+    
+    ## Returning Delivrables for this url
+    deliverables(url,resp)
     return list(linked_pages)
+
+def log_invalid(url):
+    logger = logging.getLogger('invalid')
+    logger.setLevel(logging.INFO)
+    file_handler = logging.FileHandler('invalid_url.log')
+    formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    logger.info(f"Invalid url - {url}")
 
 def modify_if_relative(relative_url,parent_url):
     if relative_url and (relative_url.startswith("/") or relative_url.startswith("../")):
@@ -77,17 +92,13 @@ def modify_if_relative(relative_url,parent_url):
 def can_crawl(url, parsed):
     # checking robots.txt
     try:
-        site = requests.get("http://" + parsed.netloc + "/robots.txt")
-        if site.status_code != 200:
-            print(f"No robot.txt for {url}",f"Status_code : {site.status_code}")
-            return True
         rp = urllib.robotparser.RobotFileParser()
         rp.set_url("http://" + parsed.netloc + "/robots.txt")
         rp.read()
         return rp.can_fetch("*", url)
     except:
         # means that there is no robots.txt for that website
-        return False
+        return True
 
 def is_trap(parsed) -> bool:
     # was able to identify what causes traps and get regular expressions from:
@@ -125,19 +136,19 @@ def is_trap(parsed) -> bool:
     if "/event/" in parsed.path or "/events/" in parsed.path:
         return False
 
-def is_high_quality(url):
+def is_high_quality(resp):
     try:
         # checks if high quality by amount of text
-        amount_of_text = len(get_text(url))
-        if amount_of_text > 300:
+        amount_of_text = len(get_text(resp))
+        if amount_of_text > 100:
             return True
         return False
     except:
         return False
 
-def get_text(url):
+def get_text(resp):
     # scraps entire webpage's text and tokenizes
-    soup = BeautifulSoup(requests.get(url).content, "html.parser")
+    soup = BeautifulSoup(resp.raw_response.content, "html.parser")
     words = soup.get_text(" ", strip=True)
     words = words.lower()
     words = re.sub('[^A-Za-z0-9]+', ' ', words)
@@ -153,7 +164,7 @@ def get_text(url):
             word_set.remove(word)
     return word_set
 
-def deliverables(url):
+def deliverables(url, resp):
     global unique_pages
     global longest_page
     global word_frequency
@@ -161,7 +172,7 @@ def deliverables(url):
     global stopwords
 
     try:
-        text = get_text(url)
+        text = get_text(resp)
     except:
         text = 0
     
@@ -187,7 +198,7 @@ def deliverables(url):
         
 def logging_data():
     top50 = list(sorted(word_frequency.items(), key=lambda x: x[1], reverse=True))[:50]
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('report')
     logger.setLevel(logging.INFO)
     file_handler = logging.FileHandler('report_data.log')
     formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
@@ -210,16 +221,11 @@ def is_valid(url):
         if any(check_url in url for check_url in config.seed_urls):
             return False
 
-        # Checking crawling ability from robots.txt
         if not can_crawl(url, parsed):
             return False
 
         #Checking if trap exist in url
         if is_trap(parsed):
-            return False
-        
-        # checking for quality
-        if not is_high_quality(url):
             return False
         
         if re.match(
@@ -232,8 +238,7 @@ def is_valid(url):
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()):
             return False
-        
-        deliverables(url)
+    
         return True
 
     except TypeError:

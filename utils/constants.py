@@ -13,3 +13,5 @@ stopwords = ["a", "about", "above", "after", "again", "against", "all", "am", "a
              "what's", "when", "when's", "where", "where's", "which", "while", "who", "who's", "whom", "why", "why's",
              "with", "won't", "would", "wouldn't", "you", "you'd", "you'll", "you're", "you've", "your", "yours",
              "yourself", "yourselves"]
+
+seed_urls = [".ics.uci.edu",".cs.uci.edu",".informatics.uci.edu",".stat.uci.edu","today.uci.edu/department/information_computer_sciences"]

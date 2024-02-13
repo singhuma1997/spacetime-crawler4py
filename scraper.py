@@ -49,6 +49,9 @@ def extract_next_links(url, resp):
 
     for a_tag in soup.findAll("a"):
         href = a_tag.attrs.get("href")
+        possibleInd = href.find('#')
+        if possibleInd != -1:
+            href = href[:possibleInd]
         href = modify_if_relative(href,url)
         if is_valid(href):
             linked_pages.add(href)
@@ -108,9 +111,18 @@ def is_trap(parsed) -> bool:
     if len(str(parsed.geturl())) > 200:
         return True
 
-    # anchor traps
-    if "#" in parsed.geturl():
+    # duplicate url traps
+    path_segments = parsed.path.lower().split("/")
+    path_segments = path_segments[1:]
+    
+    if len(path_segments) != len(set(path_segments)):               # Checks for any repeating paths
+        print("Repeating path url trap: " + url)
         return True
+        
+    elif "session" in path_segments or "session" in parsed.query:   # Check for Session ID traps
+        print("it is a session ID trap")
+        return True
+
 
     # repeating directories
     if re.match("^.*?(/.+?/).*?\1.*$|^.*?/(.+?/)\2.*$", parsed.path):
@@ -123,6 +135,13 @@ def is_trap(parsed) -> bool:
     # empty
     if parsed is None:
         return False
+    
+    #dynamic trap check
+    url_query = parsed.query
+    if url_query != "":
+        query_params = parse_qs(url_query)
+        if len(query_params) > 7:
+            return True
 
     # avoid club pages have events from too early
     if re.match(r".*(calendar|date|gallery|image|wp-content|pdf|img_).*?$", parsed.path.lower()):

@@ -1,17 +1,12 @@
 import re
 import logging
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse, urljoin, parse_qs
 from bs4 import BeautifulSoup
-from utils.config import Config
-from configparser import ConfigParser
-from utils.constants import stopwords
+from utils.constants import stopwords, seed_urls
 import urllib.robotparser
 from collections import defaultdict
 import copy
 
-cparser = ConfigParser()
-cparser.read('config.ini')
-config = Config(cparser)
 
 unique_pages = set()
 longest_page = {'url': 'default', 'length': 0}
@@ -49,27 +44,35 @@ def extract_next_links(url, resp):
 
     for a_tag in soup.findAll("a"):
         href = a_tag.attrs.get("href")
+
+        if href is None:
+            continue
+        
         possibleInd = href.find('#')
         if possibleInd != -1:
             href = href[:possibleInd]
+
         href = modify_if_relative(href,url)
-        if is_valid(href):
+
+        condition, reason = is_valid(href)
+        
+        if condition:
             linked_pages.add(href)
-        else:
-            log_invalid(href)
+        elif reason != "Non-seed-url":
+            log_invalid(href, reason)
     
     ## Returning Delivrables for this url
     deliverables(url,resp)
     return list(linked_pages)
 
-def log_invalid(url):
+def log_invalid(url, reason):
     logger = logging.getLogger('invalid')
     logger.setLevel(logging.INFO)
     file_handler = logging.FileHandler('invalid_url.log')
     formatter = logging.Formatter('%(asctime)s : %(levelname)s : %(name)s : %(message)s')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-    logger.info(f"Invalid url - {url}")
+    logger.info(f"Invalid url - {url},Reason - {reason}")
 
 def modify_if_relative(relative_url,parent_url):
     if relative_url and (relative_url.startswith("/") or relative_url.startswith("../")):
@@ -103,34 +106,37 @@ def can_crawl(url, parsed):
         # means that there is no robots.txt for that website
         return True
 
-def is_trap(parsed) -> bool:
+def is_trap(parsed):
     # was able to identify what causes traps and get regular expressions from:
     # https://support.archive-it.org/hc/en-us/articles/208332943-Identify-and-avoid-crawler-traps-
 
     # long url traps
     if len(str(parsed.geturl())) > 200:
-        return True
+        return True, "Long url traps"
 
     # duplicate url traps
     path_segments = parsed.path.lower().split("/")
     path_segments = path_segments[1:]
     
-    if len(path_segments) != len(set(path_segments)):               # Checks for any repeating paths
-        print("Repeating path url trap: " + url)
-        return True
-        
-    elif "session" in path_segments or "session" in parsed.query:   # Check for Session ID traps
-        print("it is a session ID trap")
-        return True
+    REPEATER = re.compile(r"(.+/)\1+")
+    match = REPEATER.findall(f"{parsed.geturl()}/")
+    
+    if(len(match) > 0){
+        return True, "Duplicate Path Trap"
+    }
+
+    # Check for Session ID traps
+    if "session" in path_segments or "session" in parsed.query:   
+        return True, "Session Trap"
 
 
     # repeating directories
     if re.match("^.*?(/.+?/).*?\1.*$|^.*?/(.+?/)\2.*$", parsed.path):
-        return True
+        return True, "Repeating Directories Trap"
 
     # extra directories
     if re.match("^.*(/misc|/sites|/all|/themes|/modules|/profiles|/css|/field|/node|/theme){3}.*$", parsed.path):
-        return True
+        return True, "Extra Directories Trap"
 
     # empty
     if parsed is None:
@@ -141,19 +147,19 @@ def is_trap(parsed) -> bool:
     if url_query != "":
         query_params = parse_qs(url_query)
         if len(query_params) > 7:
-            return True
+            return True, "Dynamic Trap"
 
     # avoid club pages have events from too early
     if re.match(r".*(calendar|date|gallery|image|wp-content|pdf|img_).*?$", parsed.path.lower()):
-        return False
+        return True, "Club Page Trap"
 
     # avoid informatics' monthly archives
     if re.match(r".*\/20\d\d-\d\d*", parsed.path.lower()):
-        return False
+        return True, "Month Trap"
 
     # no event calendars
     if "/event/" in parsed.path or "/events/" in parsed.path:
-        return False
+        return True, "Calendar Trap"
 
 def is_high_quality(resp):
     try:
@@ -234,18 +240,19 @@ def is_valid(url):
     try:
         parsed = urlparse(url)
         if parsed.scheme not in set(["http", "https"]):
-            return False
+            return False, "Https missing"
         
         #Checking if url exists in seed_urls
-        if any(check_url in url for check_url in config.seed_urls):
-            return False
+        if not any(check_url in url for check_url in seed_urls):
+            return False, "Non-seed-url"
 
         if not can_crawl(url, parsed):
-            return False
+            return False, "Non crawllable"
 
         #Checking if trap exist in url
-        if is_trap(parsed):
-            return False
+        trap_bool, trap_reason = is_trap(parsed)
+        if trap_bool:
+            return False, f"Is a Trap - {trap_reason}"
         
         if re.match(
             r".*\.(css|js|bmp|gif|jpe?g|ico"
@@ -256,9 +263,9 @@ def is_valid(url):
             + r"|epub|dll|cnf|tgz|sha1"
             + r"|thmx|mso|arff|rtf|jar|csv"
             + r"|rm|smil|wmv|swf|wma|zip|rar|gz)$", parsed.path.lower()):
-            return False
+            return False, "Re Matching Failed"
     
-        return True
+        return True, ""
 
     except TypeError:
         print ("TypeError for ", parsed)

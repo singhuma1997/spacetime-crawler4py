@@ -15,6 +15,7 @@ sub_domains = defaultdict(int)
 
 
 def scraper(url, resp):
+    #if url !=
     links = extract_next_links(url, resp)
     logging_data()
     return links
@@ -30,11 +31,17 @@ def extract_next_links(url, resp):
     #         resp.raw_response.content: the content of the page!
     # Return a list with the hyperlinks (as strings) scrapped from resp.raw_response.content
 
-
     #Initial check 
-    if url != resp.url and resp.status != 200 and url != resp.raw_response.url:
-        return list()
+    if resp.raw_response:
+        if url != resp.raw_response.url:
+            if url not in resp.raw_response.url:
+                log_invalid(url, 'Redirection of url')
+                return list()
 
+        
+    if url != resp.url or resp.status != 200: 
+        return list()
+        
     # Check for Less quality pages
     if not is_high_quality(resp):
         return list()
@@ -121,9 +128,9 @@ def is_trap(parsed):
     REPEATER = re.compile(r"(.+/)\1+")
     match = REPEATER.findall(f"{parsed.geturl()}/")
     
-    if(len(match) > 0){
+    if(len(match) > 0):
         return True, "Duplicate Path Trap"
-    }
+    
 
     # Check for Session ID traps
     if "session" in path_segments or "session" in parsed.query:   
@@ -140,7 +147,7 @@ def is_trap(parsed):
 
     # empty
     if parsed is None:
-        return False
+        return False, ""
     
     #dynamic trap check
     url_query = parsed.query
@@ -160,6 +167,7 @@ def is_trap(parsed):
     # no event calendars
     if "/event/" in parsed.path or "/events/" in parsed.path:
         return True, "Calendar Trap"
+    return False, ""
 
 def is_high_quality(resp):
     try:
@@ -270,3 +278,45 @@ def is_valid(url):
     except TypeError:
         print ("TypeError for ", parsed)
         raise
+
+
+def generate_report_txt():
+    unique_pages_found = list(unique_pages)
+    
+    with open('report.txt', 'w') as report:
+        print("number of unique pages found: "+ str(len(unique_pages_found)))
+
+        report.write("------------------Report------------------"+ "\n")
+        report.write("" + "\n")
+
+        report.write("------------------QUESTION #1------------------"+"\n")
+        report.write("Unique pages found: " + str(len(unique_pages_found)) + "\n")
+        report.write("" + "\n")
+        report.write("" + "\n")
+
+        report.write("------------------QUESTION #2------------------"+"\n")
+        #report.write("URL with the largest word count: "+ max(unique_pages_found, key=unique_pages_found.get) + "\n")
+        if unique_pages_found:
+            #max_url = max(unique_pages_found, key=unique_pages_found.get)
+            report.write("URL with the largest word count: " + longest_page['url'] + "\n")
+        else:
+            report.write("No URLs found with word count. The dictionary is empty.\n")
+        report.write("" + "\n")
+        report.write("" + "\n")
+
+        report.write("------------------QUESTION #3------------------"+"\n")
+        report.write("The following are the 50 most common words" + "\n")
+        top_50_words = sorted(word_frequency.items(), key=lambda item: item[1], reverse=True)[:50]
+        for word, frequency in top_50_words:
+            report.write(f"Word: {word} - Frequency: {frequency}" + "\n")
+        report.write("" + "\n")
+        report.write("" + "\n")
+
+        report.write("------------------QUESTION #4------------------"+"\n")
+        report.write("Number of subdomains in the ics.uci.edu domain: " + str(len(sub_domains.keys()))+ "\n")
+        sorted_subdomains = sorted(sub_domains.keys())
+        for subdomain in sorted_subdomains:
+            num_pages = sub_domains[subdomain]
+            report.write(f"{subdomain}, {num_pages}\n")
+        report.write("" + "\n")
+        report.write("" + "\n")

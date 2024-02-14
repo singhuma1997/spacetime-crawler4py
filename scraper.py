@@ -279,44 +279,33 @@ def is_valid(url):
         print ("TypeError for ", parsed)
         raise
 
-
 def generate_report_txt():
-    unique_pages_found = list(unique_pages)
-    
-    with open('report.txt', 'w') as report:
-        print("number of unique pages found: "+ str(len(unique_pages_found)))
+    # generate the report with all questions from canvas and their corresponding answers
+    report = open('report.txt', 'w')
 
-        report.write("------------------Report------------------"+ "\n")
-        report.write("" + "\n")
+    questions = []
 
-        report.write("------------------QUESTION #1------------------"+"\n")
-        report.write("Unique pages found: " + str(len(unique_pages_found)) + "\n")
-        report.write("" + "\n")
-        report.write("" + "\n")
 
-        report.write("------------------QUESTION #2------------------"+"\n")
-        #report.write("URL with the largest word count: "+ max(unique_pages_found, key=unique_pages_found.get) + "\n")
-        if unique_pages_found:
-            #max_url = max(unique_pages_found, key=unique_pages_found.get)
-            report.write("URL with the largest word count: " + longest_page['url'] + "\n")
-        else:
-            report.write("No URLs found with word count. The dictionary is empty.\n")
-        report.write("" + "\n")
-        report.write("" + "\n")
+    # Question 1
+    questions.append(f'1. How many unique pages did you find? \nThere are {len(unique_pages)} unique pages.\n\n')
+    # Question 2
+    questions.append(f'2. What is the longest page in terms of the number of words? \nThe longest page in terms of the number of words is {longest_page['url']} with {longest_page['length']} words.\n\n')
+    # Question 3
+    # global frequency_dict
+    sorted_freq = sorted(word_frequency.items(), key=lambda x: (-x[1], x[0]))
+    word_str = ''
+    for i, (word, frequency) in enumerate(sorted_freq[:50]):
+        word_str += f'Word {(i+1)}: {word}, Frequency: {frequency}\n'
+    questions.append(f'3. What are the 50 most common words in the entire set of pages crawled under these domains? \nThe 50 most common words are listed as follows:\n{word_str}\n')
+    # Question 4
+    subdomain_str = f'4. How many subdomains did you find in the ics.uci.edu domain? \n{len(sub_domains.keys())} total subdomains in ics.uci.edu \n'
+    for key, value in sorted(sub_domains.items(), key=lambda x: x[0].lower()):
+        subdomain_str += f'{key}, {value}\n'
+    questions.append(subdomain_str)
 
-        report.write("------------------QUESTION #3------------------"+"\n")
-        report.write("The following are the 50 most common words" + "\n")
-        top_50_words = sorted(word_frequency.items(), key=lambda item: item[1], reverse=True)[:50]
-        for word, frequency in top_50_words:
-            report.write(f"Word: {word} - Frequency: {frequency}" + "\n")
-        report.write("" + "\n")
-        report.write("" + "\n")
+    # write answers to report file
+    for i in range(4):
+        report.writelines(f'question_{i+1}\n{questions[i]}\n')
 
-        report.write("------------------QUESTION #4------------------"+"\n")
-        report.write("Number of subdomains in the ics.uci.edu domain: " + str(len(sub_domains.keys()))+ "\n")
-        sorted_subdomains = sorted(sub_domains.keys())
-        for subdomain in sorted_subdomains:
-            num_pages = sub_domains[subdomain]
-            report.write(f"{subdomain}, {num_pages}\n")
-        report.write("" + "\n")
-        report.write("" + "\n")
+    # close the report after all questions have been answered
+    report.close()
